@@ -1,4 +1,4 @@
-name: LinkedIn JobSpy public executor
+name: LinkedIn JobSpy public executor (CN HK SG lifecycle)
 
 on:
   workflow_dispatch:
@@ -37,6 +37,9 @@ jobs:
         run: |
           python scripts/jobspy/run_company_searches.py \
             --output-dir data/jobspy/incremental/search \
+            --location China \
+            --location "Hong Kong" \
+            --location Singapore \
             --results-per-company 1000 \
             --delay-min 2 \
             --delay-max 5 \
@@ -71,7 +74,7 @@ jobs:
                   statuses.update(doc.get('statusSummary', {}) if isinstance(doc, dict) else {})
               except Exception:
                   pass
-          out = {'schemaVersion': '2.0', 'mode': 'full-company-snapshot', 'scopeLocations': ['CN'], 'jobs': list(rows.values()), 'statusSummary': statuses, 'companies': {k: v for k, v in statuses.items()}}
+          out = {'schemaVersion': '2.0', 'mode': 'full-company-snapshot', 'scopeLocations': ['CN', 'HK', 'SG'], 'jobs': list(rows.values()), 'statusSummary': statuses, 'companies': {k: v for k, v in statuses.items()}}
           json.dump(out, open('data/jobspy/incremental/search_combined.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
           print('per_company', json.dumps(per_company, ensure_ascii=False), flush=True)
           print('search_jobs', len(rows), flush=True)
@@ -132,9 +135,9 @@ jobs:
           existing=existing if isinstance(existing,list) else existing.get('jobs',[])
           old={jid(x):x for x in existing if jid(x)}
           incoming=json.load(open('data/jobspy/incremental/search_combined.json',encoding='utf-8'))['jobs']
-          todo=[x for x in incoming if jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip()]
+          todo=[x for x in incoming if str(x.get('location') or '').upper() == 'CN' and (jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip())]
           json.dump({'schemaVersion':'1.1','mode':'detail-candidates','jobs':todo},open('data/jobspy/incremental/detail_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
-          print('detail_candidates',len(todo),'search_jobs',len(incoming))
+          print('detail_candidates_cn',len(todo),'search_jobs_all_regions',len(incoming))
           PY
       - name: Fetch only new detail candidates
         if: steps.combine.outputs.has_jobs == 'true'
