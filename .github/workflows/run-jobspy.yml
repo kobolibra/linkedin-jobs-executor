@@ -2,6 +2,15 @@ name: LinkedIn JobSpy public executor (CN HK SG lifecycle)
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "Search scope: CN only for frequent checks, or CN/HK/SG for the daily lifecycle sweep"
+        required: true
+        default: cn
+        type: choice
+        options:
+          - cn
+          - expanded
 
 concurrency:
   group: linkedin-private-writer
@@ -35,13 +44,26 @@ jobs:
         run: python -m pip install --disable-pip-version-check requests beautifulsoup4
       - name: Search full company listings
         run: |
+          case "${{ inputs.scope }}" in
+            expanded)
+              locations=(--location China --location "Hong Kong" --location Singapore)
+              ;;
+            cn)
+              locations=(--location China)
+              ;;
+            *)
+              echo "Unsupported scope: ${{ inputs.scope }}" >&2
+              exit 1
+              ;;
+          esac
           python scripts/jobspy/run_company_searches.py \
             --output-dir data/jobspy/incremental/search \
             --results-per-company 1000 \
             --delay-min 2 \
             --delay-max 5 \
             --page-timeout 20 \
-            --max-workers 2
+            --max-workers 2 \
+            "${locations[@]}"
       - name: Combine search results
         id: combine
         run: |
@@ -71,7 +93,9 @@ jobs:
                   statuses.update(doc.get('statusSummary', {}) if isinstance(doc, dict) else {})
               except Exception:
                   pass
-          out = {'schemaVersion': '2.0', 'mode': 'full-company-snapshot', 'scopeLocations': ['CN', 'HK', 'SG'], 'jobs': list(rows.values()), 'statusSummary': statuses, 'companies': {k: v for k, v in statuses.items()}}
+          scope = '${{ inputs.scope }}'
+          scope_locations = ['CN', 'HK', 'SG'] if scope == 'expanded' else ['CN']
+          out = {'schemaVersion': '2.0', 'mode': 'full-company-snapshot', 'scope': scope, 'scopeLocations': scope_locations, 'jobs': list(rows.values()), 'statusSummary': statuses, 'companies': {k: v for k, v in statuses.items()}}
           json.dump(out, open('data/jobspy/incremental/search_combined.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
           print('per_company', json.dumps(per_company, ensure_ascii=False), flush=True)
           print('search_jobs', len(rows), flush=True)
