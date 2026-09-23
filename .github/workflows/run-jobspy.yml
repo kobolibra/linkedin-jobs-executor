@@ -37,9 +37,6 @@ jobs:
         run: |
           python scripts/jobspy/run_company_searches.py \
             --output-dir data/jobspy/incremental/search \
-            --location China \
-            --location "Hong Kong" \
-            --location Singapore \
             --results-per-company 1000 \
             --delay-min 2 \
             --delay-max 5 \
