@@ -27,6 +27,6 @@ Public contributions should be limited to generic workflow, tooling, and reliabi
 
 ## Security
 
-Report suspected credential exposure or sensitive-data leakage privately to the repository owner. Never post tokens, passwords, job data, or generated operational artifacts in issues or pull requests.
+Report suspected credential exposure or sensitive-data leakage directly to the repository owner. Never post tokens, passwords, job data, or generated operational artifacts in issues or pull requests.
 
 <!-- This public README intentionally documents capabilities only and omits deployment topology, source repositories, secret names, and storage details. -->
