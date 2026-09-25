@@ -1,19 +1,32 @@
 # LinkedIn Jobs Executor
 
-This public repository is the execution-only runner for the private canonical repository `kobolibra/linkedin-jobs-page`.
+A public GitHub Actions execution project for scheduled LinkedIn job collection and lifecycle processing.
 
-## JobSpy scope
+## Scope
 
-The executor runs each configured company search in China (`CN`), Hong Kong (`HK`), and Singapore (`SG`). Lifecycle snapshots and expiry decisions are region-aware: a failed or blocked search in one region cannot expire jobs in another region.
+The executor supports two explicit run modes:
 
-**JD and city enrichment are strictly CN-only.** HK and SG rows carry listing/lifecycle fields only. The executor does not request their detail pages and does not write their city or description fields.
+- `cn`: China-only collection and enrichment.
+- `expanded`: China, Hong Kong, and Singapore collection for lifecycle and expiry tracking.
 
-## Security boundary
+JD and city enrichment remain **China-only**. Hong Kong and Singapore records are used for listing and lifecycle fields without requesting their detail pages or populating China-only enrichment fields.
 
-The private repository remains the source of truth. This workflow checks it out into a temporary runner directory, runs JobSpy, and pushes only the intended JobSpy snapshot/history files back to the private repository. This public repository must never contain canonical jobs data, JobSpy history, RSS snapshots, private credentials, or generated frontend payloads.
+## Workflow
 
-The required Actions secret is `PRIVATE_REPO_TOKEN`. Use a fine-grained token limited to `kobolibra/linkedin-jobs-page` with Contents read/write and Metadata read. It does not need administration, visibility, Actions-write, or repository-deletion permission.
+The `run-jobspy.yml` workflow is started through `workflow_dispatch`. It validates the requested scope, runs the configured company searches, preserves the last known good snapshot when a collection window returns no usable results, and publishes only the intended execution output through the configured delivery path.
 
-The private repository's `jobspy-incremental.yml` is a lightweight compatibility dispatcher. Its `PUBLIC_EXECUTOR_TOKEN` must be allowed to dispatch workflows in this public executor if the existing external scheduler continues to target the private workflow. The external scheduler may also dispatch this public workflow directly.
+The workflow is designed to keep credentials, source data, generated payloads, and operational state out of this public repository. Runtime access is provided through protected GitHub Actions secrets, and logs must not contain credentials or sensitive job payloads.
 
-No public artifact contains snapshots or job payloads; persistent output is written only to the private canonical repository.
+## Operational notes
+
+Use `cn` for the short, frequent collection windows and `expanded` for the longer regional lifecycle pass. Do not commit generated snapshots, credentials, or environment-specific configuration to this repository.
+
+## License and contribution
+
+Public contributions should be limited to generic workflow, tooling, and reliability improvements and must not include operational data or credentials.
+
+## Security
+
+Report suspected credential exposure or sensitive-data leakage privately to the repository owner. Never post tokens, passwords, job data, or generated operational artifacts in issues or pull requests.
+
+<!-- This public README intentionally documents capabilities only and omits deployment topology, source repositories, secret names, and storage details. -->
