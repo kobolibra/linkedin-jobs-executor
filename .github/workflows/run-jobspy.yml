@@ -11,6 +11,11 @@ on:
         options:
           - cn
           - expanded
+      force_repost_jd:
+        description: "One-time backfill: re-fetch JD for canonical rows already marked as repost"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: linkedin-private-writer
@@ -158,6 +163,7 @@ jobs:
           existing=existing if isinstance(existing,list) else existing.get('jobs',[])
           old={jid(x):x for x in existing if jid(x)}
           incoming=json.load(open('data/jobspy/incremental/search_combined.json',encoding='utf-8'))['jobs']
+          force_repost_jd='${{ inputs.force_repost_jd }}' == 'true'
           def repost_candidate(x):
               key=jid(x)
               previous=old.get(key, {})
@@ -167,7 +173,7 @@ jobs:
               # date comparison is a defensive fallback for older canonical
               # rows whose history metadata is incomplete.
               return bool(x.get('jobspyRepost') is True or (posted and last and posted > last))
-          todo=[x for x in incoming if str(x.get('location') or '').upper() == 'CN' and (jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip() or repost_candidate(x))]
+          todo=[x for x in incoming if str(x.get('location') or '').upper() == 'CN' and (jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip() or repost_candidate(x) or (force_repost_jd and old.get(jid(x),{}).get('jobspyRepost') is True))]
           json.dump({'schemaVersion':'1.1','mode':'detail-candidates','jobs':todo},open('data/jobspy/incremental/detail_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
           print('detail_candidates_cn',len(todo),'search_jobs_all_regions',len(incoming))
           PY
