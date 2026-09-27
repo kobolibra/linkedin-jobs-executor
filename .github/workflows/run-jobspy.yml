@@ -133,7 +133,9 @@ jobs:
               p=posted(x); old=history.get(k,{})
               first=old.get('firstSeen') or p
               if p and first and p < first: first=p
-              repost=bool(old.get('firstSeen') and p and p > old.get('firstSeen'))
+              # A repost is an event: datePosted must advance beyond the last
+              # date we observed, not merely remain newer than firstSeen.
+              repost=bool(old.get('lastPosted') and p and p > old.get('lastPosted'))
               x['jobspyFirstSeen']=first or None
               x['jobspyRepost']=repost
               x['jobspyLastPosted']=p or old.get('lastPosted')
@@ -156,7 +158,16 @@ jobs:
           existing=existing if isinstance(existing,list) else existing.get('jobs',[])
           old={jid(x):x for x in existing if jid(x)}
           incoming=json.load(open('data/jobspy/incremental/search_combined.json',encoding='utf-8'))['jobs']
-          todo=[x for x in incoming if str(x.get('location') or '').upper() == 'CN' and (jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip())]
+          def repost_candidate(x):
+              key=jid(x)
+              previous=old.get(key, {})
+              posted=str(x.get('datePosted') or '')[:10]
+              last=str(previous.get('jobspyLastPosted') or '')[:10]
+              # jobspyRepost is produced by the persistent history step. The
+              # date comparison is a defensive fallback for older canonical
+              # rows whose history metadata is incomplete.
+              return bool(x.get('jobspyRepost') is True or (posted and last and posted > last))
+          todo=[x for x in incoming if str(x.get('location') or '').upper() == 'CN' and (jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip() or repost_candidate(x))]
           json.dump({'schemaVersion':'1.1','mode':'detail-candidates','jobs':todo},open('data/jobspy/incremental/detail_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
           print('detail_candidates_cn',len(todo),'search_jobs_all_regions',len(incoming))
           PY
