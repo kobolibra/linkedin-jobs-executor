@@ -188,6 +188,26 @@ jobs:
             --attempts 3 \
             --delay-min 1 \
             --delay-max 3
+      - name: Probe non-target CN job liveness
+        if: steps.combine.outputs.has_jobs == 'true'
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          python scripts/jobspy/probe_job_liveness.py \
+            --jobs jobs.json \
+            --output data/jobspy/incremental/liveness.json \
+            --max-probes 150 \
+            --min-interval-hours 20 \
+            --gone-confirm-hours 12 \
+            --recheck-expired-hours 72 \
+            --recheck-expired-days 30 \
+            --delay-min 2 \
+            --delay-max 5 \
+            --timeout 20 \
+            --breaker 3 \
+            --guard-ratio 0.6 \
+            --guard-min 10 \
+            --location CN
       - name: Combine search fields with fetched detail fields
         if: steps.combine.outputs.has_jobs == 'true'
         run: |
@@ -227,6 +247,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/jobspy/incremental/latest.json data/jobspy/incremental/search_combined.json data/jobspy/incremental/latest.completed_at data/jobspy/history/index.json
+          if [[ -s data/jobspy/incremental/liveness.json ]]; then git add data/jobspy/incremental/liveness.json; fi
           if git diff --cached --quiet; then
             echo "No snapshot changes to commit"
             exit 0
