@@ -27,6 +27,9 @@ permissions:
 jobs:
   run-jobspy:
     runs-on: ubuntu-latest
+    env:
+      LINKEDIN_HTTP_STATE: ${{ github.workspace }}/private-source/data/jobspy/http-state.json
+      LINKEDIN_HEALTH_EVENTS: /tmp/linkedin-health.jsonl
     defaults:
       run:
         working-directory: private-source
@@ -47,6 +50,11 @@ jobs:
           python-version: "3.11"
       - name: Install scraper dependencies
         run: python -m pip install --disable-pip-version-check requests beautifulsoup4
+      - name: Initialize isolated health events and search outputs
+        run: |
+          mkdir -p data/jobspy/incremental/search
+          rm -f data/jobspy/incremental/search/*.json
+          : > "$LINKEDIN_HEALTH_EVENTS"
       - name: Search full company listings
         run: |
           case "${{ inputs.scope }}" in
@@ -112,7 +120,7 @@ jobs:
       - name: Report empty search and stop publishing
         if: steps.combine.outputs.has_jobs != 'true'
         run: |
-          echo "::warning title=JobSpy incremental::LinkedIn returned zero jobs for all configured companies in this window. The previous snapshot is left untouched and nothing was published."
+          echo "::warning title=JobSpy incremental::No trustworthy complete company snapshot is available. Inspect per-company status and scraping health. The previous snapshot is left untouched."
           echo "Nothing to publish; existing data/jobspy/incremental/latest.json remains the newest good snapshot."
       - name: Update persistent JobSpy history
         if: steps.combine.outputs.has_jobs == 'true'
@@ -246,3 +254,32 @@ jobs:
           echo "::error title=JobSpy incremental::Unable to push snapshot after 5 attempts"
           exit 1
 
+      - name: Persist scraping health even when no job snapshot can be published
+        if: always()
+        env:
+          JOBS_AVAILABLE: ${{ steps.combine.outputs.has_jobs }}
+          WORKFLOW_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          detail_args=()
+          if [[ "$JOBS_AVAILABLE" == 'true' ]]; then
+            detail_args=(--details data/jobspy/incremental/detail_results.json --liveness data/jobspy/incremental/liveness.json)
+          fi
+          python scripts/jobspy/scraper_health.py --task jobs --workflow-status "$WORKFLOW_STATUS" --search-dir data/jobspy/incremental/search "${detail_args[@]}" --snapshot /tmp/linkedin-job-health.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          published=false
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            health_rc=0
+            python scripts/jobspy/scraper_health.py --apply /tmp/linkedin-job-health.json || health_rc=$?
+            if [[ "$health_rc" != 0 && "$health_rc" != 2 ]]; then exit "$health_rc"; fi
+            git add data/jobspy/health.json data/jobspy/http-state.json
+            if git diff --cached --quiet; then published=true; break; fi
+            git commit -m '[scraper-health] record requests and preserve cooldowns'
+            if git push origin HEAD:main; then published=true; break; fi
+            sleep $((attempt * 3))
+          done
+          if [[ "$published" != true ]]; then echo 'Unable to persist scraping health' >&2; exit 1; fi
+          if [[ "$health_rc" == 2 ]]; then exit 1; fi
