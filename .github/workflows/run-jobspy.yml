@@ -54,6 +54,7 @@ jobs:
         run: |
           mkdir -p data/jobspy/incremental/search
           rm -f data/jobspy/incremental/search/*.json
+          rm -f data/jobspy/incremental/detail_results.json /tmp/linkedin-liveness.json
           : > "$LINKEDIN_HEALTH_EVENTS"
       - name: Search full company listings
         run: |
@@ -137,10 +138,9 @@ jobs:
           from datetime import datetime, timezone
           sys.path.insert(0, "scripts/jobspy")
           from posting_dates import is_repost
+          from linkedin_ids import linkedin_job_id
           def jid(x):
-              s=str(x.get('sourceJobId') or x.get('link') or '')
-              m=re.search(r'(\d{7,})',s)
-              return m.group(1) if m else ''
+              return linkedin_job_id(x.get('sourceJobId') or x.get('link'))
           existing=json.load(open('jobs.json',encoding='utf-8'))
           existing=existing if isinstance(existing,list) else existing.get('jobs',[])
           old={jid(x):x for x in existing if jid(x)}
@@ -177,7 +177,7 @@ jobs:
         run: |
           python scripts/jobspy/probe_job_liveness.py \
             --jobs jobs.json \
-            --output data/jobspy/incremental/liveness.json \
+            --output /tmp/linkedin-liveness.json \
             --max-probes 150 \
             --min-interval-hours 20 \
             --gone-confirm-hours 12 \
@@ -197,10 +197,11 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, re
+          import sys
+          sys.path.insert(0, 'scripts/jobspy')
+          from linkedin_ids import linkedin_job_id
           def jid(x):
-              s=str(x.get('sourceJobId') or x.get('link') or '')
-              m=re.search(r'(\d{7,})',s)
-              return m.group(1) if m else s
+              return linkedin_job_id(x.get('sourceJobId') or x.get('link'))
           base=json.load(open('data/jobspy/incremental/search_combined.json',encoding='utf-8'))
           detail_path='data/jobspy/incremental/detail_results.json'
           details={}
@@ -230,6 +231,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ -s /tmp/linkedin-liveness.json ]]; then cp /tmp/linkedin-liveness.json data/jobspy/incremental/liveness.json; fi
           git add data/jobspy/incremental/latest.json data/jobspy/incremental/search_combined.json data/jobspy/incremental/latest.completed_at data/jobspy/history/index.json
           if [[ -s data/jobspy/incremental/liveness.json ]]; then git add data/jobspy/incremental/liveness.json; fi
           if git diff --cached --quiet; then
@@ -237,6 +239,12 @@ jobs:
             exit 0
           fi
           git commit -m "jobspy: publish snapshot for next canonical merge"
+          # Keep runtime leases/cooldowns outside Git while rebasing the snapshot.
+          # The always() health step captures this preserved file, even on failure.
+          cp "$LINKEDIN_HTTP_STATE" /tmp/linkedin-runtime-state.json
+          git restore -- data/jobspy/http-state.json
+          export LINKEDIN_HTTP_STATE=/tmp/linkedin-runtime-state.json
+          echo "LINKEDIN_HTTP_STATE=$LINKEDIN_HTTP_STATE" >> "$GITHUB_ENV"
           for attempt in 1 2 3 4 5; do
             if git push origin "HEAD:main"; then
               echo "Pushed snapshot on attempt ${attempt}"
@@ -263,7 +271,7 @@ jobs:
           set -euo pipefail
           detail_args=()
           if [[ "$JOBS_AVAILABLE" == 'true' ]]; then
-            detail_args=(--details data/jobspy/incremental/detail_results.json --liveness data/jobspy/incremental/liveness.json)
+            detail_args=(--details data/jobspy/incremental/detail_results.json --liveness /tmp/linkedin-liveness.json)
           fi
           python scripts/jobspy/scraper_health.py --task jobs --workflow-status "$WORKFLOW_STATUS" --search-dir data/jobspy/incremental/search "${detail_args[@]}" --snapshot /tmp/linkedin-job-health.json
           git config user.name 'github-actions[bot]'
@@ -273,7 +281,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             health_rc=0
-            python scripts/jobspy/scraper_health.py --apply /tmp/linkedin-job-health.json || health_rc=$?
+            python scripts/jobspy/scraper_health.py --apply /tmp/linkedin-job-health.json --state data/jobspy/http-state.json || health_rc=$?
             if [[ "$health_rc" != 0 && "$health_rc" != 2 ]]; then exit "$health_rc"; fi
             git add data/jobspy/health.json data/jobspy/http-state.json
             if git diff --cached --quiet; then published=true; break; fi
