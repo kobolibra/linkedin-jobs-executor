@@ -120,7 +120,7 @@ jobs:
       - name: Report empty search and stop publishing
         if: steps.combine.outputs.has_jobs != 'true'
         run: |
-          echo "::warning title=JobSpy incremental::LinkedIn returned zero jobs for all configured companies in this window. The previous snapshot is left untouched and nothing was published."
+          echo "::warning title=JobSpy incremental::No trustworthy complete company snapshot is available. Inspect per-company status and scraping health. The previous snapshot is left untouched."
           echo "Nothing to publish; existing data/jobspy/incremental/latest.json remains the newest good snapshot."
       - name: Update persistent JobSpy history
         if: steps.combine.outputs.has_jobs == 'true'
