@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LINKEDIN_HTTP_STATE: ${{ github.workspace }}/private-source/data/jobspy/http-state.json
-      LINKEDIN_HEALTH_EVENTS: ${{ runner.temp }}/linkedin-health.jsonl
+      LINKEDIN_HEALTH_EVENTS: /tmp/linkedin-health.jsonl
     defaults:
       run:
         working-directory: private-source
