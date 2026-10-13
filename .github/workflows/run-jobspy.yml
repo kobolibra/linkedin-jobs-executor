@@ -70,11 +70,9 @@ jobs:
           case "${{ inputs.scope }}" in
             expanded)
               locations=(--location China --location "Hong Kong" --location Singapore)
-              time_budget=1500
               ;;
             cn)
               locations=(--location China)
-              time_budget=720
               ;;
             *)
               echo "Unsupported scope: ${{ inputs.scope }}" >&2
@@ -88,7 +86,6 @@ jobs:
             --delay-max 5 \
             --page-timeout 20 \
             --max-workers 2 \
-            --time-budget-seconds "$time_budget" \
             "${locations[@]}"
       - name: Combine search results
         id: combine
@@ -141,7 +138,6 @@ jobs:
       - name: Fetch only new detail candidates
         if: steps.combine.outputs.has_jobs == 'true'
         run: |
-          export LINKEDIN_HTTP_DEADLINE="$(python -c 'import time; print(time.time()+480)')"
           python scripts/jobspy/fetch_details_parallel.py \
             --input data/jobspy/incremental/detail_candidates.json \
             --output data/jobspy/incremental/detail_results.json \
@@ -153,9 +149,7 @@ jobs:
       - name: Probe non-target CN HK SG liveness and reposts
         if: steps.combine.outputs.has_jobs == 'true'
         continue-on-error: true
-        timeout-minutes: 25
         run: |
-          export LINKEDIN_HTTP_DEADLINE="$(python -c 'import time; print(time.time()+600)')"
           python scripts/jobspy/probe_job_liveness.py \
             --jobs jobs.json \
             --output /tmp/linkedin-liveness.json \
