@@ -11,10 +11,16 @@ permissions:
 
 concurrency:
   group: liveness-same-cohort-verification
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
+  stop:
+    if: contains(github.event.head_commit.message, '[liveness-stop]')
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Previous individual liveness verification cancelled.'
   verify:
+    if: "!contains(github.event.head_commit.message, '[liveness-stop]')"
     runs-on: ubuntu-latest
     env:
       LINKEDIN_HTTP_STATE: /tmp/linkedin-liveness-runtime.json
