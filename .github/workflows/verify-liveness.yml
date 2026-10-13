@@ -27,7 +27,7 @@ jobs:
         with:
           repository: kobolibra/linkedin-jobs-page
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: 451ce374d69c994f7b5738d83b1f0aa755474c86
+          ref: 06f5fbdbe69543b7faf222a77d35076731d462c4
           path: private-source
           fetch-depth: 0
       - uses: actions/setup-python@v5
