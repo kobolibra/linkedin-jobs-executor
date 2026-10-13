@@ -1,4 +1,4 @@
-name: Verify complete LinkedIn collection
+name: Verify LinkedIn quota-policy collection
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
     if: github.event_name != 'push' || github.ref == 'refs/heads/verification/complete-collector'
     runs-on: ubuntu-latest
     env:
-      LINKEDIN_HTTP_STATE: ${{ github.workspace }}/private-source/data/jobspy/http-state.json
+      LINKEDIN_HTTP_STATE: /tmp/linkedin-job-http-runtime.json
       LINKEDIN_HEALTH_EVENTS: /tmp/linkedin-health.jsonl
     defaults:
       run:
@@ -64,6 +64,7 @@ jobs:
           mkdir -p data/jobspy/incremental/search
           rm -f data/jobspy/incremental/search/*.json
           rm -f data/jobspy/incremental/detail_results.json /tmp/linkedin-liveness.json
+          python scripts/jobspy/scraper_health.py --state data/jobspy/http-state.json --initialize-runtime "$LINKEDIN_HTTP_STATE"
           : > "$LINKEDIN_HEALTH_EVENTS"
       - name: Search full company listings
         run: |
@@ -214,12 +215,6 @@ jobs:
             exit 0
           fi
           git commit -m "jobspy: publish snapshot for next canonical merge"
-          # Keep runtime leases/cooldowns outside Git while rebasing the snapshot.
-          # The always() health step captures this preserved file, even on failure.
-          cp "$LINKEDIN_HTTP_STATE" /tmp/linkedin-runtime-state.json
-          git restore -- data/jobspy/http-state.json
-          export LINKEDIN_HTTP_STATE=/tmp/linkedin-runtime-state.json
-          echo "LINKEDIN_HTTP_STATE=$LINKEDIN_HTTP_STATE" >> "$GITHUB_ENV"
           for attempt in 1 2 3 4 5; do
             if git push origin "HEAD:main"; then
               echo "Pushed snapshot on attempt ${attempt}"
