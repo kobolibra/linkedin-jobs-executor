@@ -154,7 +154,6 @@ jobs:
           python scripts/jobspy/probe_job_liveness.py \
             --jobs jobs.json \
             --output /tmp/linkedin-liveness.json \
-            --identity-cache data/jobspy/incremental/liveness.json \
             --max-probes 150 \
             --min-interval-hours 20 \
             --gone-confirm-hours 12 \
