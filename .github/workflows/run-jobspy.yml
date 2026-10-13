@@ -1,8 +1,8 @@
-name: LinkedIn JobSpy public executor (CN HK SG lifecycle)
+name: Verify complete LinkedIn collection
 
 on:
   push:
-    branches: [main]
+    branches: [verification/complete-collector]
     paths: [.github/workflows/run-jobspy.yml]
   workflow_dispatch:
     inputs:
@@ -34,7 +34,7 @@ jobs:
     steps:
       - run: echo 'Previous executor cancelled; the next scheduled dispatch uses the fixed version.'
   run-jobspy:
-    if: github.event_name != 'push'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/verification/complete-collector'
     runs-on: ubuntu-latest
     env:
       LINKEDIN_HTTP_STATE: ${{ github.workspace }}/private-source/data/jobspy/http-state.json
@@ -67,7 +67,7 @@ jobs:
           : > "$LINKEDIN_HEALTH_EVENTS"
       - name: Search full company listings
         run: |
-          case "${{ inputs.scope }}" in
+          case "${{ inputs.scope || 'cn' }}" in
             expanded)
               locations=(--location China --location "Hong Kong" --location Singapore)
               ;;
@@ -75,7 +75,7 @@ jobs:
               locations=(--location China)
               ;;
             *)
-              echo "Unsupported scope: ${{ inputs.scope }}" >&2
+              echo "Unsupported scope: ${{ inputs.scope || 'cn' }}" >&2
               exit 1
               ;;
           esac
@@ -92,7 +92,7 @@ jobs:
         run: |
           python scripts/jobspy/combine_search_results.py \
             --search-dir data/jobspy/incremental/search \
-            --scope "${{ inputs.scope }}" \
+            --scope "${{ inputs.scope || 'cn' }}" \
             --output data/jobspy/incremental/search_combined.json
       - name: Report empty search and stop publishing
         if: steps.combine.outputs.has_jobs != 'true'
