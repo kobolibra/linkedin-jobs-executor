@@ -81,47 +81,14 @@ jobs:
       - name: Combine search results
         id: combine
         run: |
-          mkdir -p data/jobspy/incremental/search
-          python - <<'PY'
-          import glob, json, os
-          rows = {}
-          per_company = {}
-          for path in sorted(glob.glob('data/jobspy/incremental/search/*.json')):
-              name = os.path.basename(path)
-              try:
-                  doc = json.load(open(path, encoding='utf-8'))
-              except Exception as exc:
-                  print('unreadable', name, exc, flush=True)
-                  per_company[name] = 'unreadable'
-                  continue
-              items = doc.get('jobs', []) if isinstance(doc, dict) else doc
-              per_company[name] = len(items)
-              for item in items:
-                  key = str(item.get('sourceJobId') or item.get('link') or '').strip()
-                  if key:
-                      rows[key] = item
-          statuses = {}
-          for path in sorted(glob.glob('data/jobspy/incremental/search/*.json')):
-              try:
-                  doc = json.load(open(path, encoding='utf-8'))
-                  statuses.update(doc.get('statusSummary', {}) if isinstance(doc, dict) else {})
-              except Exception:
-                  pass
-          scope = '${{ inputs.scope }}'
-          scope_locations = ['CN', 'HK', 'SG'] if scope == 'expanded' else ['CN']
-          out = {'schemaVersion': '2.0', 'mode': 'full-company-snapshot', 'scope': scope, 'scopeLocations': scope_locations, 'jobs': list(rows.values()), 'statusSummary': statuses, 'companies': {k: v for k, v in statuses.items()}}
-          json.dump(out, open('data/jobspy/incremental/search_combined.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
-          print('per_company', json.dumps(per_company, ensure_ascii=False), flush=True)
-          print('search_jobs', len(rows), flush=True)
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              valid = any(str(value).startswith(('ok:', 'empty')) for value in statuses.values())
-              fh.write('has_jobs=%s\n' % ('true' if valid else 'false'))
-              fh.write('search_jobs=%d\n' % len(rows))
-          PY
+          python scripts/jobspy/combine_search_results.py \
+            --search-dir data/jobspy/incremental/search \
+            --scope "${{ inputs.scope }}" \
+            --output data/jobspy/incremental/search_combined.json
       - name: Report empty search and stop publishing
         if: steps.combine.outputs.has_jobs != 'true'
         run: |
-          echo "::warning title=JobSpy incremental::No trustworthy complete company snapshot is available. Inspect per-company status and scraping health. The previous snapshot is left untouched."
+          echo "::warning title=JobSpy incremental::No verified job observations or complete company snapshot are available. The previous snapshot is left untouched."
           echo "Nothing to publish; existing data/jobspy/incremental/latest.json remains the newest good snapshot."
       - name: Update persistent JobSpy history
         if: steps.combine.outputs.has_jobs == 'true'
