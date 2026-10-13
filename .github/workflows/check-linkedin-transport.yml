@@ -1,4 +1,4 @@
-name: Compare original and current LinkedIn transport
+name: Check public LinkedIn search fallback
 on:
   push:
     branches: [diagnostics/transport-comparison]
@@ -31,5 +31,5 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install requests beautifulsoup4
-      - name: Compare eight requests at most without publishing job data
+      - name: Check public pagination without publishing job data
         run: python scripts/compare_linkedin_transport.py
