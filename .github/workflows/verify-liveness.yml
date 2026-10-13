@@ -1,4 +1,4 @@
-name: Verify optimized liveness on the same 150 jobs
+name: Verify company liveness against the same 150 jobs
 
 on:
   push:
@@ -14,13 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  stop:
-    if: contains(github.event.head_commit.message, '[liveness-stop]')
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo 'Previous individual liveness verification cancelled.'
   verify:
-    if: "!contains(github.event.head_commit.message, '[liveness-stop]')"
     runs-on: ubuntu-latest
     env:
       LINKEDIN_HTTP_STATE: /tmp/linkedin-liveness-runtime.json
@@ -33,7 +27,7 @@ jobs:
         with:
           repository: kobolibra/linkedin-jobs-page
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: 0bb67d2f246cfd3b379d9d5eaff1dc76272041d4
+          ref: 451ce374d69c994f7b5738d83b1f0aa755474c86
           path: private-source
           fetch-depth: 0
       - uses: actions/setup-python@v5
@@ -50,16 +44,29 @@ jobs:
           from pathlib import Path
           sys.path.insert(0,'scripts/jobspy')
           from job_liveness import jid
+          from company_liveness import identity_key
           ids=set(["4477504100","4476884734","4426330793","4426340175","4473874111","4466920000","4466916051","4477657495","4477629717","4475750402","4475195456","4474266002","4473132171","4460957393","4423647763","4423645805","4472114620","4473588769","4471227588","4435981894","4472497102","4448968285","4448979200","4448687772","4442617421","4446723211","4440196243","4434827866","4435017135","4419416879","4385702296","4419819412","4468345999","4450329282","4447262474","4473283660","4473092984","4459937955","4471255181","4451187607","4458880556","4441179548","4451193562","4471331916","4471443852","4464439759","4470905602","4468558276","4444615307","4444657634","4439444256","4446495345","4433349793","4433591824","4468381959","4438590473","4466870276","4466883094","4439810713","4439965319","4439160239","4362074602","4435916679","4434390935","4415014464","4427911877","4338917596","4468563119","4405629462","4466874307","4466903836","4467551116","4469131966","4460236853","4467976968","4465541086","4467722218","4379189333","4465620524","4463959896","4464444480","4464176454","4463248778","4463341425","4410194462","4462436996","4460258421","4460242419","4440405905","4461703938","4461722542","4460246646","4446052029","4422680381","4459871972","4459185463","4454969993","4446616648","4447518038","4281724238","4457304598","4450311305","4456474315","4456771078","4455607259","4453438927","4475155358","4475636420","4475758277","4455670044","4454254394","4265088557","4422272093","4452185402","4451515209","4447399155","4445422745","4444346363","4444925318","4473474192","4470819965","4471440985","4470912908","4452159374","4439292115","4459127056","4446731515","4472837988","4466194412","4458739499","4458595682","4460331195","4459114873","4458592755","4458174216","4457082277","4448166854","4447299740","4447285956","4440187435","4440186479","4439782004","4435574190","4420266150","4468903803","4472261315","4468790745","4469738393","4470454562","4469674282"])
           old=json.loads(subprocess.check_output(['git','show','501234dd0399e6aa8c054857e20258b6b90dcb2a:jobs.json'],text=True))
           rows=old if isinstance(old,list) else old['jobs']
-          cohort=[x for x in rows if jid(x) in ids]
+          cohort=[dict(x) for x in rows if jid(x) in ids]
+          prior=json.loads(subprocess.check_output(['git','show','d986ad7dc64f6c8bc2df0b7dc98ae6e37ff3424d:data/jobspy/incremental/liveness.json'],text=True))
+          by={x['jobId']:x for x in prior['observations']}
+          for row in cohort:
+              hint=by[jid(row)].get('companyLogoSource')
+              if hint: row['companyLogoSource']=hint
+          Path('/tmp/liveness-original.json').write_text(json.dumps(prior))
+          seeds={}
+          for company_id,job_id in [('1767','4472497102'),('1314683','4477504100'),('294033','4434390935')]:
+              row=next(x for x in cohort if jid(x)==job_id)
+              hint=by[job_id]['companyLogoSource']
+              seeds[identity_key(row)]={'companyId':company_id,'companyUrl':hint['companyUrl'],'employerName':hint['employerName'],'sourceJobId':job_id,'verifiedAt':'2026-10-13T08:00:00Z','regions':{}}
+          Path('/tmp/liveness-seed.json').write_text(json.dumps({'companyIdentities':seeds}))
           assert len(cohort)==150 and {jid(x) for x in cohort}==ids
           Path('/tmp/liveness-cohort.json').write_text(json.dumps({'jobs':cohort},ensure_ascii=False))
           print(json.dumps({'fixedCohort':len(cohort),'sourceWatermarks':sum(bool(x.get('postingLastDate') or x.get('jobspyLastPosted')) for x in cohort)}))
           PY
       - name: Verify all 150 liveness and repost candidates
-        run: python scripts/jobspy/probe_job_liveness.py --jobs /tmp/liveness-cohort.json --output /tmp/liveness-verified.json --max-probes 150 --timeout 20
+        run: python scripts/jobspy/probe_job_liveness.py --jobs /tmp/liveness-cohort.json --output /tmp/liveness-verified.json --max-probes 150 --timeout 20 --identity-cache /tmp/liveness-seed.json
       - name: Audit actual coverage, requests and elapsed time
         run: |
           python - <<'PY'
@@ -70,9 +77,13 @@ jobs:
           events=[json.loads(x) for x in Path(os.environ['LINKEDIN_HEALTH_EVENTS']).read_text().splitlines()]
           events=[x for x in events if 'status' in x]
           report={'stats':doc['stats'],'requests':len(events),'httpStatuses':dict(Counter(str(x['status']) for x in events)),'requestsByEndpoint':dict(Counter(x.get('endpoint','unknown') for x in events))}
+          old=json.loads(Path('/tmp/liveness-original.json').read_text())
+          old_by={x['jobId']:x for x in old['observations']}
+          report['previousClosedNowListed']=[x['jobId'] for x in doc['observations'] if x['result']=='open' and old_by[x['jobId']]['result']=='closed']
+          report['companyQueries']=doc['companyQueries']
           Path('/tmp/liveness-comparison.json').write_text(json.dumps(report,indent=2))
           print(json.dumps(report))
-          assert doc['stats'].get('probed')==150 and not doc['stats'].get('error') and not doc['stats'].get('circuitOpen'), 'Fixed cohort not completely checked'
+          assert doc['stats'].get('probed')==150 and not doc['stats'].get('error') and not doc['stats'].get('circuitOpen') and not doc['stats'].get('unknown'), 'Fixed cohort not completely checked'
           PY
       - name: Save verification evidence
         if: always()
@@ -84,3 +95,4 @@ jobs:
             /tmp/liveness-comparison.json
             /tmp/linkedin-liveness-events.jsonl
           if-no-files-found: error
+
