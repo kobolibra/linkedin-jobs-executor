@@ -159,8 +159,6 @@ jobs:
             --gone-confirm-hours 12 \
             --recheck-expired-hours 72 \
             --recheck-expired-days 30 \
-            --delay-min 2 \
-            --delay-max 5 \
             --timeout 20 \
             --breaker 3 \
             --guard-ratio 0.6 \
