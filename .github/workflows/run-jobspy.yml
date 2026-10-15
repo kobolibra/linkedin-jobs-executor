@@ -7,13 +7,18 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Search scope: CN only for frequent checks, or CN/HK/SG for the daily lifecycle sweep"
+        description: "Manual scope when use_daily_plan is disabled"
         required: true
         default: cn
         type: choice
         options:
           - cn
           - expanded
+      use_daily_plan:
+        description: "Daily plan: 05/17 BJT CN/HK/SG lists only; 11/23 BJT CN lists plus non-target liveness. Disable for a manual scope run."
+        required: true
+        default: true
+        type: boolean
       force_repost_jd:
         description: "One-time backfill: re-fetch JD for canonical rows already marked as repost"
         required: false
@@ -26,6 +31,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   recovery:
@@ -59,6 +65,14 @@ jobs:
           python-version: "3.11"
       - name: Install scraper dependencies
         run: python -m pip install --disable-pip-version-check requests beautifulsoup4
+      - name: Resolve daily collection plan
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/jobspy/execution_plan.py \
+            --daily-plan "${{ inputs.use_daily_plan }}" \
+            --scope "${{ inputs.scope }}"
       - name: Initialize isolated health events and search outputs
         run: |
           mkdir -p data/jobspy/incremental/search
@@ -68,7 +82,7 @@ jobs:
           : > "$LINKEDIN_HEALTH_EVENTS"
       - name: Search full company listings
         run: |
-          case "${{ inputs.scope }}" in
+          case "${{ steps.plan.outputs.scope }}" in
             expanded)
               locations=(--location China --location "Hong Kong" --location Singapore)
               ;;
@@ -76,7 +90,7 @@ jobs:
               locations=(--location China)
               ;;
             *)
-              echo "Unsupported scope: ${{ inputs.scope }}" >&2
+              echo "Unsupported scope: ${{ steps.plan.outputs.scope }}" >&2
               exit 1
               ;;
           esac
@@ -93,7 +107,7 @@ jobs:
         run: |
           python scripts/jobspy/combine_search_results.py \
             --search-dir data/jobspy/incremental/search \
-            --scope "${{ inputs.scope }}" \
+            --scope "${{ steps.plan.outputs.scope }}" \
             --output data/jobspy/incremental/search_combined.json
       - name: Report empty search and stop publishing
         if: steps.combine.outputs.has_jobs != 'true'
@@ -148,7 +162,7 @@ jobs:
             --delay-min 1 \
             --delay-max 3
       - name: Probe non-target CN HK SG liveness and reposts
-        if: steps.combine.outputs.has_jobs == 'true'
+        if: steps.combine.outputs.has_jobs == 'true' && steps.plan.outputs.probe_liveness == 'true'
         continue-on-error: true
         run: |
           python scripts/jobspy/probe_job_liveness.py \
