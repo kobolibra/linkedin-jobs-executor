@@ -171,8 +171,7 @@ jobs:
             --max-probes 150 \
             --min-interval-hours 20 \
             --gone-confirm-hours 12 \
-            --recheck-expired-hours 72 \
-            --recheck-expired-days 30 \
+            --delete-after-days 15 \
             --timeout 20 \
             --breaker 3 \
             --guard-ratio 0.6 \
