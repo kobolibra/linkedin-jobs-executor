@@ -145,10 +145,10 @@ jobs:
               key=jid(x)
               previous=old.get(key, {})
               return is_repost(previous, x.get('datePosted'), observed,source_raw=x.get('linkedinPostedRaw'))
-          todo=[x for x in incoming if (str(x.get('location') or '').upper() == 'CN' or (x.get('requestedCompany') == 'State Street' and str(x.get('location') or '').upper() in ('HK', 'SG'))) and (jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip() or repost_candidate(x) or (force_repost_jd and old.get(jid(x),{}).get('jobspyRepost') is True and old.get(jid(x),{}).get('jobStatus') != 'expired'))]
+          todo=[x for x in incoming if str(x.get('location') or '').upper() == 'CN' and (jid(x) not in old or not str(old[jid(x)].get('descriptionHtml') or '').strip() or repost_candidate(x) or (force_repost_jd and old.get(jid(x),{}).get('jobspyRepost') is True and old.get(jid(x),{}).get('jobStatus') != 'expired'))]
           json.dump({'schemaVersion':'1.1','mode':'detail-candidates','jobs':todo},open('data/jobspy/incremental/detail_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
           json.dump(incoming_doc,open('data/jobspy/incremental/search_combined.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
-          print('detail_candidates',len(todo),'search_jobs_all_regions',len(incoming))
+          print('detail_candidates_cn',len(todo),'search_jobs_all_regions',len(incoming))
           PY
       - name: Fetch only new detail candidates
         if: steps.combine.outputs.has_jobs == 'true'
